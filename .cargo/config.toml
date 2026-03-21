@@ -1,0 +1,10 @@
+[unstable]
+build-std = ["std", "core", "alloc", "panic_abort"]
+build-std-features = ["compiler-builtins-mem"]
+
+[build]
+target = "xtensa-esp32s3-espidf"
+
+[target.xtensa-esp32s3-espidf]
+linker = "ldproxy"
+runner = "espflash flash --monitor"
