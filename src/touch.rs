@@ -182,6 +182,13 @@ pub struct TouchState {
     last_gesture_y: i16,
     /// `now_ms` when the last gesture fired (for ghost proximity suppression).
     last_gesture_ms: u32,
+    /// Logical X where the last press was confirmed (for ghost proximity suppression).
+    /// Updated at confirm time, not gesture time — survives subsequent swipe gestures.
+    last_press_x: i16,
+    /// Logical Y where the last press was confirmed.
+    last_press_y: i16,
+    /// `now_ms` when the last press was confirmed.
+    last_press_ms: u32,
 }
 
 impl TouchState {
@@ -202,6 +209,9 @@ impl TouchState {
             last_gesture_x: 0,
             last_gesture_y: 0,
             last_gesture_ms: 0,
+            last_press_x: 0,
+            last_press_y: 0,
+            last_press_ms: 0,
         }
     }
 
@@ -253,11 +263,15 @@ impl TouchState {
                 // confirm_count to 0 on every poll while in the ghost zone so it
                 // can never accumulate. After GHOST_COOLDOWN_MS the normal 5-poll
                 // rule resumes.
-                let in_ghost_zone = now_ms.wrapping_sub(self.last_gesture_ms) < GHOST_COOLDOWN_MS && {
-                    let gdx = (x as i32 - self.last_gesture_x as i32).abs();
-                    let gdy = (y as i32 - self.last_gesture_y as i32).abs();
-                    gdx <= GHOST_PROXIMITY_PX && gdy <= GHOST_PROXIMITY_PX
+                let near = |gx: i16, gy: i16| {
+                    (x as i32 - gx as i32).abs() <= GHOST_PROXIMITY_PX
+                        && (y as i32 - gy as i32).abs() <= GHOST_PROXIMITY_PX
                 };
+                let in_ghost_zone =
+                    (now_ms.wrapping_sub(self.last_gesture_ms) < GHOST_COOLDOWN_MS
+                        && near(self.last_gesture_x, self.last_gesture_y))
+                    || (now_ms.wrapping_sub(self.last_press_ms) < GHOST_COOLDOWN_MS
+                        && near(self.last_press_x, self.last_press_y));
                 if in_ghost_zone {
                     self.confirm_count = 0;
                     log::debug!("TOUCH ghost-zone blocked at ({}, {})", x, y);
@@ -269,6 +283,9 @@ impl TouchState {
                         self.start_y = y;
                         self.press_start_ms = now_ms;
                         self.long_press_fired = false;
+                        self.last_press_x = x;
+                        self.last_press_y = y;
+                        self.last_press_ms = now_ms;
                         log::debug!("TOUCH down at ({}, {}) (confirmed after {} polls)", x, y, self.confirm_count);
                     } else {
                         log::debug!("TOUCH pending confirm ({}/{}) at ({}, {})", self.confirm_count, CONFIRM_COUNT, x, y);
