@@ -91,13 +91,15 @@ const TOUCH_READ_CMD: [u8; 11] = [
 ];
 
 /// Number of consecutive polls with contact required before confirming a press.
-/// Filters single-poll ghost events from the CST3240.
-const CONFIRM_COUNT: u8 = 3;
+/// Filters ghost events from the CST3240. At 20ms poll rate, 5 polls = 100ms
+/// of continuous contact required — ghosts typically last <80ms.
+const CONFIRM_COUNT: u8 = 5;
 
 // ── Gesture recognition thresholds ──────────────────────────────────────────
 
 /// Minimum horizontal displacement (px) to classify a gesture as a swipe.
-const TOUCH_SWIPE_MIN_X_PX: i32 = 64;
+/// Raised from 64 to 96 to prevent ghost-drift false swipes.
+const TOUCH_SWIPE_MIN_X_PX: i32 = 96;
 /// Maximum vertical displacement (px) allowed during a horizontal swipe.
 const TOUCH_SWIPE_MAX_Y_PX: i32 = 80;
 /// Minimum vertical displacement (px) to classify a gesture as a vertical swipe.
