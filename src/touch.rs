@@ -113,6 +113,15 @@ const TOUCH_TAP_MAX_MOVE_PX: i32 = 18;
 /// Hold duration (ms) required to fire a long press.
 const TOUCH_LONG_PRESS_MS: u32 = 600;
 
+/// Confirm count for a new press at the same position as a recent gesture.
+/// Ghost events repeat at the same coordinate; requiring 3s (150 × 20ms) of
+/// continuous contact blocks them without affecting deliberate double-taps.
+const CONFIRM_COUNT_REPEAT: u8 = 150;
+/// Pixel radius within which a touch is considered "same position" as last gesture.
+const GHOST_PROXIMITY_PX: i32 = 15;
+/// Window (ms) during which the high confirm count applies after a gesture.
+const GHOST_COOLDOWN_MS: u32 = 3000;
+
 // ── Public types ─────────────────────────────────────────────────────────────
 
 /// A gesture decoded from a complete touch press-and-release cycle.
@@ -168,6 +177,12 @@ pub struct TouchState {
     err_count: u32,
     /// Total confirmed touch contacts since creation.
     touch_count: u32,
+    /// Logical X of the last fired gesture (for ghost proximity suppression).
+    last_gesture_x: i16,
+    /// Logical Y of the last fired gesture.
+    last_gesture_y: i16,
+    /// `now_ms` when the last gesture fired (for ghost proximity suppression).
+    last_gesture_ms: u32,
 }
 
 impl TouchState {
@@ -185,6 +200,9 @@ impl TouchState {
             poll_count: 0,
             err_count: 0,
             touch_count: 0,
+            last_gesture_x: 0,
+            last_gesture_y: 0,
+            last_gesture_ms: 0,
         }
     }
 
@@ -230,18 +248,31 @@ impl TouchState {
             self.touch_count += 1;
 
             if !self.pressed {
-                // Require CONFIRM_COUNT consecutive polls before accepting as real.
-                // Ghost events always last exactly 1 poll.
+                // Require consecutive polls before accepting as real.
+                // If this touch is near the position of a recent gesture, require a
+                // much higher count (CONFIRM_COUNT_REPEAT) — ghost events repeat at the
+                // same fixed coordinate indefinitely; a real double-tap is deliberate.
                 self.confirm_count = self.confirm_count.saturating_add(1);
-                if self.confirm_count >= CONFIRM_COUNT {
+                let required = if now_ms.wrapping_sub(self.last_gesture_ms) < GHOST_COOLDOWN_MS {
+                    let gdx = (x as i32 - self.last_gesture_x as i32).abs();
+                    let gdy = (y as i32 - self.last_gesture_y as i32).abs();
+                    if gdx <= GHOST_PROXIMITY_PX && gdy <= GHOST_PROXIMITY_PX {
+                        CONFIRM_COUNT_REPEAT
+                    } else {
+                        CONFIRM_COUNT
+                    }
+                } else {
+                    CONFIRM_COUNT
+                };
+                if self.confirm_count >= required {
                     self.pressed = true;
                     self.start_x = x;
                     self.start_y = y;
                     self.press_start_ms = now_ms;
                     self.long_press_fired = false;
-                    log::debug!("TOUCH down at ({}, {}) (confirmed after {} polls)", x, y, self.confirm_count);
+                    log::debug!("TOUCH down at ({}, {}) (confirmed after {} polls, req={})", x, y, self.confirm_count, required);
                 } else {
-                    log::debug!("TOUCH pending confirm ({}/{}) at ({}, {})", self.confirm_count, CONFIRM_COUNT, x, y);
+                    log::debug!("TOUCH pending confirm ({}/{}) at ({}, {})", self.confirm_count, required, x, y);
                 }
             } else if !self.long_press_fired {
                 // Check for long press (finger held without significant movement)
@@ -252,6 +283,9 @@ impl TouchState {
                     && now_ms.wrapping_sub(self.press_start_ms) >= TOUCH_LONG_PRESS_MS
                 {
                     self.long_press_fired = true;
+                    self.last_gesture_x = self.start_x;
+                    self.last_gesture_y = self.start_y;
+                    self.last_gesture_ms = now_ms;
                     log::debug!("TOUCH -> LongPress");
                     return Gesture::LongPress;
                 }
@@ -294,6 +328,9 @@ impl TouchState {
                 return Gesture::None;
             }
             self.last_tap_ms = now_ms;
+            self.last_gesture_x = self.last_x;
+            self.last_gesture_y = self.last_y;
+            self.last_gesture_ms = now_ms;
             log::debug!("TOUCH -> Tap at ({}, {})", self.last_x, self.last_y);
             return Gesture::Tap { x: self.last_x, y: self.last_y };
         }
@@ -306,6 +343,9 @@ impl TouchState {
         // Vertical swipe: dominant vertical component
         if abs_dy >= TOUCH_SWIPE_MIN_Y_PX && abs_dy >= abs_dx {
             self.last_swipe_ms = now_ms;
+            self.last_gesture_x = self.start_x;
+            self.last_gesture_y = self.start_y;
+            self.last_gesture_ms = now_ms;
             let g = if dy < 0 { Gesture::SwipeUp } else { Gesture::SwipeDown };
             let g = map_swipe_for_orientation(g, orientation);
             log::debug!("TOUCH -> {:?}", g);
@@ -315,6 +355,9 @@ impl TouchState {
         // Horizontal swipe: dominant horizontal component
         if abs_dx >= TOUCH_SWIPE_MIN_X_PX && abs_dy <= TOUCH_SWIPE_MAX_Y_PX && abs_dx > abs_dy {
             self.last_swipe_ms = now_ms;
+            self.last_gesture_x = self.start_x;
+            self.last_gesture_y = self.start_y;
+            self.last_gesture_ms = now_ms;
             let g = if dx < 0 { Gesture::SwipeLeft } else { Gesture::SwipeRight };
             let g = map_swipe_for_orientation(g, orientation);
             log::debug!("TOUCH -> {:?}", g);
