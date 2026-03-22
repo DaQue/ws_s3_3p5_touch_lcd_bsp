@@ -114,11 +114,12 @@ const TOUCH_TAP_MAX_MOVE_PX: i32 = 18;
 const TOUCH_LONG_PRESS_MS: u32 = 600;
 
 /// Confirm count for a new press at the same position as a recent gesture.
-/// Ghost events repeat at the same coordinate; requiring 3s (150 × 20ms) of
+/// Ghost events repeat at the same coordinate; requiring ~5s (255 × 20ms) of
 /// continuous contact blocks them without affecting deliberate double-taps.
-const CONFIRM_COUNT_REPEAT: u8 = 150;
+const CONFIRM_COUNT_REPEAT: u8 = 255;
 /// Pixel radius within which a touch is considered "same position" as last gesture.
-const GHOST_PROXIMITY_PX: i32 = 15;
+/// Must cover the gap between a real tap and the ghost position — observed ~33px.
+const GHOST_PROXIMITY_PX: i32 = 50;
 /// Window (ms) during which the high confirm count applies after a gesture.
 const GHOST_COOLDOWN_MS: u32 = 3000;
 
