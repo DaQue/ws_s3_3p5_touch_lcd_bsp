@@ -119,7 +119,9 @@ const GHOST_PROXIMITY_PX: i32 = 50;
 /// Time window (ms) after any gesture during which nearby touches are hard-blocked.
 /// confirm_count is reset to 0 every poll in this zone so the ghost can never
 /// accumulate enough counts to confirm. After the window, normal rules apply.
-const GHOST_COOLDOWN_MS: u32 = 2000;
+/// 1000ms is enough to cover the observed ghost (fires <700ms after real gesture)
+/// while keeping the UI responsive for quick repeated taps.
+const GHOST_COOLDOWN_MS: u32 = 1000;
 
 // ── Public types ─────────────────────────────────────────────────────────────
 

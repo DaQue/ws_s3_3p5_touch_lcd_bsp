@@ -1,6 +1,6 @@
 [package]
 name = "ws_s3_3p5_bsp"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 description = "Board Support Package for Waveshare ESP32-S3-Touch-LCD-3.5B"
 
