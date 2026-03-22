@@ -113,15 +113,13 @@ const TOUCH_TAP_MAX_MOVE_PX: i32 = 18;
 /// Hold duration (ms) required to fire a long press.
 const TOUCH_LONG_PRESS_MS: u32 = 600;
 
-/// Confirm count for a new press at the same position as a recent gesture.
-/// Ghost events repeat at the same coordinate; requiring ~5s (255 × 20ms) of
-/// continuous contact blocks them without affecting deliberate double-taps.
-const CONFIRM_COUNT_REPEAT: u8 = 255;
-/// Pixel radius within which a touch is considered "same position" as last gesture.
-/// Must cover the gap between a real tap and the ghost position — observed ~33px.
+/// Pixel radius within which a new touch is hard-blocked after a recent gesture.
+/// Observed gap between real tap (153,73) and ghost (186,73) = 33px; 50px adds margin.
 const GHOST_PROXIMITY_PX: i32 = 50;
-/// Window (ms) during which the high confirm count applies after a gesture.
-const GHOST_COOLDOWN_MS: u32 = 3000;
+/// Time window (ms) after any gesture during which nearby touches are hard-blocked.
+/// confirm_count is reset to 0 every poll in this zone so the ghost can never
+/// accumulate enough counts to confirm. After the window, normal rules apply.
+const GHOST_COOLDOWN_MS: u32 = 2000;
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -249,31 +247,32 @@ impl TouchState {
             self.touch_count += 1;
 
             if !self.pressed {
-                // Require consecutive polls before accepting as real.
-                // If this touch is near the position of a recent gesture, require a
-                // much higher count (CONFIRM_COUNT_REPEAT) — ghost events repeat at the
-                // same fixed coordinate indefinitely; a real double-tap is deliberate.
-                self.confirm_count = self.confirm_count.saturating_add(1);
-                let required = if now_ms.wrapping_sub(self.last_gesture_ms) < GHOST_COOLDOWN_MS {
+                // Hard-block touches near the position of a recent gesture.
+                // Raising the threshold doesn't work (count accumulates through the
+                // cooldown window and fires the moment it expires). Instead, reset
+                // confirm_count to 0 on every poll while in the ghost zone so it
+                // can never accumulate. After GHOST_COOLDOWN_MS the normal 5-poll
+                // rule resumes.
+                let in_ghost_zone = now_ms.wrapping_sub(self.last_gesture_ms) < GHOST_COOLDOWN_MS && {
                     let gdx = (x as i32 - self.last_gesture_x as i32).abs();
                     let gdy = (y as i32 - self.last_gesture_y as i32).abs();
-                    if gdx <= GHOST_PROXIMITY_PX && gdy <= GHOST_PROXIMITY_PX {
-                        CONFIRM_COUNT_REPEAT
-                    } else {
-                        CONFIRM_COUNT
-                    }
-                } else {
-                    CONFIRM_COUNT
+                    gdx <= GHOST_PROXIMITY_PX && gdy <= GHOST_PROXIMITY_PX
                 };
-                if self.confirm_count >= required {
-                    self.pressed = true;
-                    self.start_x = x;
-                    self.start_y = y;
-                    self.press_start_ms = now_ms;
-                    self.long_press_fired = false;
-                    log::debug!("TOUCH down at ({}, {}) (confirmed after {} polls, req={})", x, y, self.confirm_count, required);
+                if in_ghost_zone {
+                    self.confirm_count = 0;
+                    log::debug!("TOUCH ghost-zone blocked at ({}, {})", x, y);
                 } else {
-                    log::debug!("TOUCH pending confirm ({}/{}) at ({}, {})", self.confirm_count, required, x, y);
+                    self.confirm_count = self.confirm_count.saturating_add(1);
+                    if self.confirm_count >= CONFIRM_COUNT {
+                        self.pressed = true;
+                        self.start_x = x;
+                        self.start_y = y;
+                        self.press_start_ms = now_ms;
+                        self.long_press_fired = false;
+                        log::debug!("TOUCH down at ({}, {}) (confirmed after {} polls)", x, y, self.confirm_count);
+                    } else {
+                        log::debug!("TOUCH pending confirm ({}/{}) at ({}, {})", self.confirm_count, CONFIRM_COUNT, x, y);
+                    }
                 }
             } else if !self.long_press_fired {
                 // Check for long press (finger held without significant movement)
