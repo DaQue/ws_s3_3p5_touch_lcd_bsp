@@ -119,9 +119,10 @@ const GHOST_PROXIMITY_PX: i32 = 50;
 /// Time window (ms) after any gesture during which nearby touches are hard-blocked.
 /// confirm_count is reset to 0 every poll in this zone so the ghost can never
 /// accumulate enough counts to confirm. After the window, normal rules apply.
-/// 1000ms is enough to cover the observed ghost (fires <700ms after real gesture)
-/// while keeping the UI responsive for quick repeated taps.
-const GHOST_COOLDOWN_MS: u32 = 1000;
+/// 3000ms covers observed ghost cascade: ghosts fire every 1.3–3s at the same
+/// ±3px cluster. Increasing from 1000ms to 3000ms catches all in-window ghosts
+/// while still allowing real repeated taps >3s apart at the same location.
+const GHOST_COOLDOWN_MS: u32 = 3000;
 /// If no gesture has fired in this many ms, the next confirmed press is silently
 /// consumed as a "wake touch" rather than acting on it. Capacitive panels develop
 /// phantom sustained signals after long idle (observed: 600 ms+ LongPress ghosts
