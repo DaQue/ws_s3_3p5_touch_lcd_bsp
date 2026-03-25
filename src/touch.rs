@@ -122,6 +122,12 @@ const GHOST_PROXIMITY_PX: i32 = 50;
 /// 1000ms is enough to cover the observed ghost (fires <700ms after real gesture)
 /// while keeping the UI responsive for quick repeated taps.
 const GHOST_COOLDOWN_MS: u32 = 1000;
+/// If no gesture has fired in this many ms, the next confirmed press is silently
+/// consumed as a "wake touch" rather than acting on it. Capacitive panels develop
+/// phantom sustained signals after long idle (observed: 600 ms+ LongPress ghosts
+/// after hours of no interaction). The wake touch resets the idle timer so the
+/// *following* touch works normally — real users just tap twice.
+const IDLE_WAKE_THRESHOLD_MS: u32 = 120_000; // 2 minutes
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -191,6 +197,9 @@ pub struct TouchState {
     last_press_y: i16,
     /// `now_ms` when the last press was confirmed.
     last_press_ms: u32,
+    /// True when the current press was confirmed after a long idle period and should
+    /// be silently consumed (wake touch) rather than fired as a gesture.
+    wake_pending: bool,
 }
 
 impl TouchState {
@@ -214,6 +223,7 @@ impl TouchState {
             last_press_x: 0,
             last_press_y: 0,
             last_press_ms: 0,
+            wake_pending: false,
         }
     }
 
@@ -288,6 +298,13 @@ impl TouchState {
                         self.last_press_x = x;
                         self.last_press_y = y;
                         self.last_press_ms = now_ms;
+                        // If the device has been idle for a long time, mark this press
+                        // as a wake touch — it will be silently consumed on release/longpress.
+                        self.wake_pending = now_ms.wrapping_sub(self.last_gesture_ms) >= IDLE_WAKE_THRESHOLD_MS;
+                        if self.wake_pending {
+                            log::info!("TOUCH idle-wake: first gesture after {}s idle will be discarded",
+                                now_ms.wrapping_sub(self.last_gesture_ms) / 1000);
+                        }
                         log::debug!("TOUCH down at ({}, {}) (confirmed after {} polls)", x, y, self.confirm_count);
                     } else {
                         log::debug!("TOUCH pending confirm ({}/{}) at ({}, {})", self.confirm_count, CONFIRM_COUNT, x, y);
@@ -305,6 +322,11 @@ impl TouchState {
                     self.last_gesture_x = self.start_x;
                     self.last_gesture_y = self.start_y;
                     self.last_gesture_ms = now_ms;
+                    if self.wake_pending {
+                        self.wake_pending = false;
+                        log::info!("TOUCH idle-wake: LongPress discarded");
+                        return Gesture::None;
+                    }
                     log::debug!("TOUCH -> LongPress");
                     return Gesture::LongPress;
                 }
@@ -339,6 +361,14 @@ impl TouchState {
             "TOUCH up: start=({},{}) end=({},{}) dx={} dy={}",
             self.start_x, self.start_y, self.last_x, self.last_y, dx, dy
         );
+
+        // Consume wake touch — discard first gesture after long idle
+        if self.wake_pending {
+            self.wake_pending = false;
+            self.last_gesture_ms = now_ms;
+            log::info!("TOUCH idle-wake: gesture discarded at ({},{})", self.last_x, self.last_y);
+            return Gesture::None;
+        }
 
         // Tap: small total movement, subject to cooldown
         if abs_dx <= TOUCH_TAP_MAX_MOVE_PX && abs_dy <= TOUCH_TAP_MAX_MOVE_PX {
