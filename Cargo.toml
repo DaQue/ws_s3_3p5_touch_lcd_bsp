@@ -1,6 +1,6 @@
 [package]
 name = "ws_s3_3p5_bsp"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2021"
 description = "Board Support Package for Waveshare ESP32-S3-Touch-LCD-3.5B"
 
@@ -8,6 +8,7 @@ description = "Board Support Package for Waveshare ESP32-S3-Touch-LCD-3.5B"
 name = "ws_s3_3p5_bsp"
 
 [dependencies]
+anyhow = "1"
 log = "0.4"
 
 esp-idf-sys = { version = "0.36" }
