@@ -104,10 +104,12 @@ pub const CARD_BORDER_WIFI: Rgb565 = rgb(66, 86, 108);
 
 /// "Silence alert" action button — red.
 pub const CARD_FILL_SILENCE: Rgb565 = rgb(180, 40, 40);
+/// "Silence alert" button border — bright red.
 pub const CARD_BORDER_SILENCE: Rgb565 = rgb(255, 80, 80);
 
 /// "Alert silenced" confirmation state — green.
 pub const CARD_FILL_SILENCED: Rgb565 = rgb(40, 60, 40);
+/// "Alert silenced" confirmation border — medium green.
 pub const CARD_BORDER_SILENCED: Rgb565 = rgb(80, 140, 80);
 
 // ── Text colors ──────────────────────────────────────────────────────────────

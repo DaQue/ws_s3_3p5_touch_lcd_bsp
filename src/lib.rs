@@ -21,21 +21,49 @@
 //!   PSRAM must be enabled in `sdkconfig` (`CONFIG_ESP32S3_SPIRAM_SUPPORT=y`,
 //!   `CONFIG_SPIRAM_MODE_OCT=y`, `CONFIG_SPIRAM_USE_CAPS_ALLOC=y`).
 //!
+//! # Initialization order
+//!
+//! These calls **must** happen in this exact sequence at boot:
+//!
+//! ```rust,ignore
+//! // 1. Board power: TCA9554 IO expander + AXP2101 PMIC + LCD reset line.
+//! //    Must come before init_display(). Returns esp_err_t — check it.
+//! unsafe { ws_s3_3p5_bsp::display::board_power_init() };
+//!
+//! // 2. Display: SPI bus init + AXS15231B 32-entry command sequence (~120 ms).
+//! let ctx = ws_s3_3p5_bsp::display::init_display()?;
+//!
+//! // 3. Framebuffer: allocates ~300 KB from PSRAM + 12.5 KB DMA buffer.
+//! let mut fb = Framebuffer::new(FB_WIDTH, FB_HEIGHT);
+//!
+//! // 4. Draw something before turning the backlight on (avoids white flash).
+//! fb.clear_color(BG_NOW);
+//! ctx.flush_fb(&fb, Orientation::Landscape);
+//!
+//! // 5. Backlight: drives GPIO 6 high.  Call after the first frame is ready.
+//! ws_s3_3p5_bsp::display::enable_backlight();
+//! ```
+//!
+//! After this sequence the display is live. WiFi, I2C, and other peripherals
+//! can be initialized in any order after step 1.
+//!
 //! # Quick start
 //!
 //! ```rust,ignore
-//! use ws_s3_3p5_bsp::{Framebuffer, TouchState, Gesture, Orientation};
-//! use ws_s3_3p5_bsp::display::{FB_WIDTH, FB_HEIGHT};
+//! use ws_s3_3p5_bsp::{Framebuffer, LcdContext, TouchState, Gesture, Orientation};
+//! use ws_s3_3p5_bsp::display::{FB_WIDTH, FB_HEIGHT, init_display, enable_backlight};
 //! use ws_s3_3p5_bsp::layout::BG_NOW;
 //! use ws_s3_3p5_bsp::bme280::Bme280;
 //! use ws_s3_3p5_bsp::imu;
 //! use ws_s3_3p5_bsp::speaker::{Speaker, AlertTone, init_audio_path};
 //!
-//! // Display
+//! // Display (see "Initialization order" above for full boot sequence)
+//! let ctx: LcdContext = init_display()?;
 //! let mut fb = Framebuffer::new(FB_WIDTH, FB_HEIGHT);
 //! fb.clear_color(BG_NOW);
 //! // ... draw with embedded-graphics ...
-//! fb.flush_to_panel(io, panel, Orientation::Landscape);
+//! ctx.flush_fb(&fb, Orientation::Landscape);
+//! enable_backlight();
 //!
 //! // Touch
 //! let mut touch = TouchState::new();
@@ -71,7 +99,7 @@ pub mod bme280;
 pub mod speaker;
 
 // Convenient top-level re-exports for the most commonly used types
-pub use display::Framebuffer;
+pub use display::{Framebuffer, LcdContext, init_display, enable_backlight};
 pub use touch::{TouchState, Gesture};
 pub use layout::Orientation;
 pub use imu::ImuReading;
